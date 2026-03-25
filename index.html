@@ -255,11 +255,7 @@ function reserver(){
     let cancelLink = window.location.href.split("?")[0] + "?cancel=" + id;
 
     newRef.set({nom,email,id}).then(()=>{
-  console.log("✅ Écriture Firebase OK");
-}).catch((e)=>{
-  console.error("❌ Erreur Firebase :", e);
-});
-
+    
       emailjs.send("service_ndru256","template_ywcryda",{
         nom: nom,
         email: email,
