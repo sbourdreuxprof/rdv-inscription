@@ -90,6 +90,13 @@ button:hover { background: #125ea2; }
 
 <body>
 
+<script src="https://cdn.jsdelivr.net/npm/emailjs-com@3/dist/email.min.js"></script>
+<script>
+(function(){
+  emailjs.init("n74vekKOAyzuBCWEt");
+})();
+</script>
+
 <div class="container">
 <h2>📅 Rendez-vous parents</h2>
 
@@ -118,7 +125,11 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-const jours = ["Lundi","Mardi","Mercredi"];
+const jours = [
+  "01/07/2026",
+  "02/07/2026",
+  "03/07/2026"
+];
 const max = 10;
 
 let selectedDay = jours[0];
@@ -137,11 +148,21 @@ function genSlots(){
 }
 const slots = genSlots();
 
+/*Affichage joli*/
+function formatDate(dateStr){
+  const d = new Date(dateStr.split("/").reverse().join("-"));
+  return d.toLocaleDateString("fr-FR", {
+    weekday: "short",
+    day: "numeric",
+    month: "short"
+  });
+}
+
 /* UI jours */
 const daysDiv=document.getElementById("days");
 jours.forEach(j=>{
   let d=document.createElement("div");
-  d.textContent=j;
+  d.textContent = formatDate(j);
   d.className="day";
   d.onclick=()=>{selectedDay=j;updateDays();loadSlots();}
   daysDiv.appendChild(d);
@@ -200,11 +221,13 @@ function dejaReserve(email,data){
   return false;
 }
 
+let enCours = false;
 /* Réserver */
 function reserver(){
   let nom=document.getElementById("nom").value;
   let email=document.getElementById("email").value;
-
+  if(enCours) return;
+  enCours = true;
   if(!nom||!email||!selectedSlot) return alert("Champs manquants");
 
   db.ref("reservations").once("value").then(snap=>{
@@ -220,9 +243,17 @@ function reserver(){
 
       if(nb>=max) return alert("Complet");
 
-      ref.push({nom,email});
-      alert("Réservation confirmée !");
-    });
+      ref.push({nom,email}).then(() => {
+
+  emailjs.send("service_ndru256", "template_ywcryda", {
+    nom: nom,
+    email: email,
+    date: selectedDay,
+    creneau: selectedSlot
+  });
+  enCours = false;
+  alert("Réservation confirmée ! Un email vous a été envoyé.");
+});
   });
 }
 
@@ -279,4 +310,8 @@ loadSlots();
 </script>
 
 </body>
+<p style="font-size:12px; margin-top:10px;">
+Les données sont utilisées uniquement pour l'organisation des rendez-vous.
+</p>
+
 </html>
