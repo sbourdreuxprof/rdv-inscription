@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Réservation parents</title>
+<title>Rendez-vous parents</title>
 
 <style>
 body {
@@ -21,9 +21,7 @@ body {
   box-shadow: 0 15px 40px rgba(0,0,0,0.1);
 }
 
-h2 {
-  text-align: center;
-}
+h2 { text-align: center; }
 
 input {
   width: 100%;
@@ -75,27 +73,27 @@ input {
 
 button {
   width: 100%;
-  margin-top: 15px;
+  margin-top: 10px;
   padding: 10px;
   border-radius: 10px;
   border: none;
   background: #1976d2;
   color: white;
   font-weight: bold;
+  cursor: pointer;
 }
 
 button:hover { background: #125ea2; }
+
+.footer {
+  font-size: 12px;
+  margin-top: 10px;
+  text-align: center;
+}
 </style>
 </head>
 
 <body>
-
-<script src="https://cdn.jsdelivr.net/npm/emailjs-com@3/dist/email.min.js"></script>
-<script>
-(function(){
-  emailjs.init("n74vekKOAyzuBCWEt");
-})();
-</script>
 
 <div class="container">
 <h2>📅 Rendez-vous parents</h2>
@@ -104,36 +102,52 @@ button:hover { background: #125ea2; }
 <input id="email" placeholder="Email">
 
 <div class="days" id="days"></div>
-
 <div class="slots" id="slots"></div>
 
 <button onclick="reserver()">Réserver</button>
-<button onclick="annuler()">Annuler réservation</button>
+<button onclick="annuler()">Annuler</button>
 <button onclick="exportCSV()">Exporter CSV</button>
 
+<div class="footer">
+Les données sont utilisées uniquement pour organiser les rendez-vous.
+</div>
 </div>
 
+<!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js"></script>
 
+<!-- EmailJS -->
+<script src="https://cdn.jsdelivr.net/npm/emailjs-com@3/dist/email.min.js"></script>
+
 <script>
-// 🔥 CONFIG
+// 🔥 CONFIG À REMPLACER
 const firebaseConfig = {
   apiKey: "AIzaSyDod0KoA872q_563smOlktLaZ-ICY9qat4",
   databaseURL: "https://rdv-inscription.firebaseio.com",
 };
+
+emailjs.init("n74vekKOAyzuBCWEt");
+
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-const jours = [
-  "01/07/2026",
-  "02/07/2026",
-  "03/07/2026"
-];
+const jours = ["01/07/2026","02/07/2026","03/07/2026"];
 const max = 10;
 
 let selectedDay = jours[0];
 let selectedSlot = null;
+let enCours = false;
+
+/* Format date */
+function formatDate(dateStr){
+  const d = new Date(dateStr.split("/").reverse().join("-"));
+  return d.toLocaleDateString("fr-FR", {
+    weekday: "short",
+    day: "numeric",
+    month: "short"
+  });
+}
 
 /* Générer créneaux */
 function genSlots(){
@@ -148,21 +162,11 @@ function genSlots(){
 }
 const slots = genSlots();
 
-/*Affichage joli*/
-function formatDate(dateStr){
-  const d = new Date(dateStr.split("/").reverse().join("-"));
-  return d.toLocaleDateString("fr-FR", {
-    weekday: "short",
-    day: "numeric",
-    month: "short"
-  });
-}
-
 /* UI jours */
 const daysDiv=document.getElementById("days");
 jours.forEach(j=>{
   let d=document.createElement("div");
-  d.textContent = formatDate(j);
+  d.textContent=formatDate(j);
   d.className="day";
   d.onclick=()=>{selectedDay=j;updateDays();loadSlots();}
   daysDiv.appendChild(d);
@@ -170,7 +174,7 @@ jours.forEach(j=>{
 
 function updateDays(){
   [...daysDiv.children].forEach(d=>{
-    d.classList.toggle("active", d.textContent===selectedDay);
+    d.classList.toggle("active", d.textContent===formatDate(selectedDay));
   });
 }
 
@@ -209,7 +213,7 @@ function highlight(){
   });
 }
 
-/* Anti doublon */
+/* Vérifier doublon */
 function dejaReserve(email,data){
   for(let j in data){
     for(let c in data[j]){
@@ -221,43 +225,52 @@ function dejaReserve(email,data){
   return false;
 }
 
-let enCours = false;
 /* Réserver */
 function reserver(){
-  let nom=document.getElementById("nom").value;
-  let email=document.getElementById("email").value;
   if(enCours) return;
   enCours = true;
-  if(!nom||!email||!selectedSlot) return alert("Champs manquants");
+
+  let nom=document.getElementById("nom").value;
+  let email=document.getElementById("email").value;
+
+  if(!nom||!email||!selectedSlot){
+    alert("Champs manquants");
+    enCours=false;
+    return;
+  }
 
   db.ref("reservations").once("value").then(snap=>{
     let data=snap.val()||{};
+
     if(dejaReserve(email,data)){
       alert("Déjà réservé !");
+      enCours=false;
       return;
     }
 
     let ref=db.ref(`reservations/${selectedDay}/${selectedSlot}`);
-    ref.once("value").then(snap=>{
-      let nb=snap.exists()?Object.keys(snap.val()).length:0;
+    let newRef=ref.push();
+    let id=newRef.key;
 
-      if(nb>=max) return alert("Complet");
+    let cancelLink = window.location.href.split("?")[0] + "?cancel=" + id;
 
-      ref.push({nom,email}).then(() => {
+    newRef.set({nom,email,id}).then(()=>{
 
-  emailjs.send("service_ndru256", "template_ywcryda", {
-    nom: nom,
-    email: email,
-    date: selectedDay,
-    creneau: selectedSlot
-  });
-  enCours = false;
-  alert("Réservation confirmée ! Un email vous a été envoyé.");
-});
+      emailjs.send("service_ndru256","template_ywcryda",{
+        nom: nom,
+        email: email,
+        date: selectedDay,
+        creneau: selectedSlot,
+        cancel_link: cancelLink
+      });
+
+      alert("Réservation confirmée ! Vérifiez votre email.");
+      enCours=false;
+    });
   });
 }
 
-/* Annulation */
+/* Annulation manuelle */
 function annuler(){
   let email=document.getElementById("email").value;
 
@@ -269,7 +282,7 @@ function annuler(){
         for(let id in data[j][c]){
           if(data[j][c][id].email===email){
             db.ref(`reservations/${j}/${c}/${id}`).remove();
-            alert("Réservation annulée");
+            alert("Annulé");
             return;
           }
         }
@@ -277,6 +290,30 @@ function annuler(){
     }
 
     alert("Aucune réservation trouvée");
+  });
+}
+
+/* Annulation automatique via lien */
+function autoCancel(){
+  let url=new URL(window.location.href);
+  let id=url.searchParams.get("cancel");
+  if(!id) return;
+
+  db.ref("reservations").once("value").then(snap=>{
+    let data=snap.val();
+
+    for(let j in data){
+      for(let c in data[j]){
+        for(let key in data[j][c]){
+          if(data[j][c][key].id===id){
+            db.ref(`reservations/${j}/${c}/${key}`).remove();
+            alert("Votre réservation a été annulée.");
+            window.history.replaceState({},document.title,window.location.pathname);
+            return;
+          }
+        }
+      }
+    }
   });
 }
 
@@ -306,12 +343,9 @@ function exportCSV(){
 /* Init */
 updateDays();
 loadSlots();
+autoCancel();
 
 </script>
 
 </body>
-<p style="font-size:12px; margin-top:10px;">
-Les données sont utilisées uniquement pour l'organisation des rendez-vous.
-</p>
-
 </html>
