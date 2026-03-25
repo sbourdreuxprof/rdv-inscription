@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Réservation parents</title>
+
+<style>
+body {
+  font-family: 'Inter', sans-serif;
+  background: #eef2f7;
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+}
+
+.container {
+  width: 500px;
+  background: white;
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: 0 15px 40px rgba(0,0,0,0.1);
+}
+
+h2 {
+  text-align: center;
+}
+
+input {
+  width: 100%;
+  padding: 10px;
+  margin-top: 8px;
+  border-radius: 10px;
+  border: 1px solid #ccc;
+}
+
+.days {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 15px;
+}
+
+.day {
+  flex: 1;
+  margin: 5px;
+  padding: 10px;
+  text-align: center;
+  border-radius: 10px;
+  background: #ddd;
+  cursor: pointer;
+}
+
+.day.active {
+  background: #1976d2;
+  color: white;
+}
+
+.slots {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 15px;
+}
+
+.slot {
+  padding: 8px;
+  border-radius: 8px;
+  text-align: center;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.available { background: #c8e6c9; }
+.medium { background: #ffe082; }
+.full { background: #ffcdd2; cursor: not-allowed; }
+
+button {
+  width: 100%;
+  margin-top: 15px;
+  padding: 10px;
+  border-radius: 10px;
+  border: none;
+  background: #1976d2;
+  color: white;
+  font-weight: bold;
+}
+
+button:hover { background: #125ea2; }
+</style>
+</head>
+
+<body>
+
+<div class="container">
+<h2>📅 Rendez-vous parents</h2>
+
+<input id="nom" placeholder="Nom">
+<input id="email" placeholder="Email">
+
+<div class="days" id="days"></div>
+
+<div class="slots" id="slots"></div>
+
+<button onclick="reserver()">Réserver</button>
+<button onclick="annuler()">Annuler réservation</button>
+<button onclick="exportCSV()">Exporter CSV</button>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js"></script>
+
+<script>
+// 🔥 CONFIG
+const firebaseConfig = {
+  apiKey: "AIzaSyDod0KoA872q_563smOlktLaZ-ICY9qat4",
+  databaseURL: "https://rdv-inscription.firebaseio.com",
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+const jours = ["Lundi","Mardi","Mercredi"];
+const max = 10;
+
+let selectedDay = jours[0];
+let selectedSlot = null;
+
+/* Générer créneaux */
+function genSlots(){
+  let list=[];
+  for(let t=480;t<=1110;t+=30){
+    let f=x=>String(x).padStart(2,'0');
+    let h=Math.floor(t/60),m=t%60;
+    let h2=Math.floor((t+30)/60),m2=(t+30)%60;
+    list.push(`${f(h)}:${f(m)}-${f(h2)}:${f(m2)}`);
+  }
+  return list;
+}
+const slots = genSlots();
+
+/* UI jours */
+const daysDiv=document.getElementById("days");
+jours.forEach(j=>{
+  let d=document.createElement("div");
+  d.textContent=j;
+  d.className="day";
+  d.onclick=()=>{selectedDay=j;updateDays();loadSlots();}
+  daysDiv.appendChild(d);
+});
+
+function updateDays(){
+  [...daysDiv.children].forEach(d=>{
+    d.classList.toggle("active", d.textContent===selectedDay);
+  });
+}
+
+/* Charger créneaux */
+function loadSlots(){
+  const slotsDiv=document.getElementById("slots");
+  slotsDiv.innerHTML="";
+
+  slots.forEach(s=>{
+    db.ref(`reservations/${selectedDay}/${s}`).on("value",snap=>{
+      let nb=snap.exists()?Object.keys(snap.val()).length:0;
+
+      let div=document.createElement("div");
+      div.textContent=s;
+
+      if(nb>=max){
+        div.className="slot full";
+      } else if(nb>=7){
+        div.className="slot medium";
+      } else {
+        div.className="slot available";
+      }
+
+      if(nb<max){
+        div.onclick=()=>{selectedSlot=s;highlight();}
+      }
+
+      slotsDiv.appendChild(div);
+    });
+  });
+}
+
+function highlight(){
+  [...document.querySelectorAll(".slot")].forEach(s=>{
+    s.style.border = (s.textContent===selectedSlot)?"2px solid black":"none";
+  });
+}
+
+/* Anti doublon */
+function dejaReserve(email,data){
+  for(let j in data){
+    for(let c in data[j]){
+      for(let id in data[j][c]){
+        if(data[j][c][id].email===email) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/* Réserver */
+function reserver(){
+  let nom=document.getElementById("nom").value;
+  let email=document.getElementById("email").value;
+
+  if(!nom||!email||!selectedSlot) return alert("Champs manquants");
+
+  db.ref("reservations").once("value").then(snap=>{
+    let data=snap.val()||{};
+    if(dejaReserve(email,data)){
+      alert("Déjà réservé !");
+      return;
+    }
+
+    let ref=db.ref(`reservations/${selectedDay}/${selectedSlot}`);
+    ref.once("value").then(snap=>{
+      let nb=snap.exists()?Object.keys(snap.val()).length:0;
+
+      if(nb>=max) return alert("Complet");
+
+      ref.push({nom,email});
+      alert("Réservation confirmée !");
+    });
+  });
+}
+
+/* Annulation */
+function annuler(){
+  let email=document.getElementById("email").value;
+
+  db.ref("reservations").once("value").then(snap=>{
+    let data=snap.val();
+
+    for(let j in data){
+      for(let c in data[j]){
+        for(let id in data[j][c]){
+          if(data[j][c][id].email===email){
+            db.ref(`reservations/${j}/${c}/${id}`).remove();
+            alert("Réservation annulée");
+            return;
+          }
+        }
+      }
+    }
+
+    alert("Aucune réservation trouvée");
+  });
+}
+
+/* CSV */
+function exportCSV(){
+  db.ref("reservations").once("value").then(snap=>{
+    let data=snap.val();
+    let csv="Jour,Créneau,Nom,Email\n";
+
+    for(let j in data){
+      for(let c in data[j]){
+        for(let id in data[j][c]){
+          let r=data[j][c][id];
+          csv+=`${j},${c},${r.nom},${r.email}\n`;
+        }
+      }
+    }
+
+    let blob=new Blob([csv]);
+    let a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download="reservations.csv";
+    a.click();
+  });
+}
+
+/* Init */
+updateDays();
+loadSlots();
+
+</script>
+
+</body>
+</html>
